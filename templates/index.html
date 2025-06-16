@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VideoGen Agent</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        h1 {
+            color: #2c3e50;
+            font-size: 2.5rem;
+        }
+        .tagline {
+            font-size: 1.2rem;
+            color: #7f8c8d;
+            margin-bottom: 30px;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: vertical;
+            font-size: 16px;
+            min-height: 100px;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        button:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+        .status {
+            margin-top: 30px;
+            padding: 20px;
+            border-radius: 4px;
+            display: none;
+        }
+        .status.processing {
+            display: block;
+            background-color: #f0f8ff;
+            border: 1px solid #3498db;
+        }
+        .status.error {
+            display: block;
+            background-color: #ffebee;
+            border: 1px solid #e74c3c;
+        }
+        .progress-container {
+            margin-top: 15px;
+            background-color: #ecf0f1;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .progress-bar {
+            height: 20px;
+            background-color: #3498db;
+            width: 0%;
+            transition: width 0.5s;
+            text-align: center;
+            color: white;
+            font-size: 12px;
+            line-height: 20px;
+        }
+        .video-container {
+            margin-top: 30px;
+            text-align: center;
+            display: none;
+        }
+        video {
+            max-width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        .download-btn {
+            display: inline-block;
+            margin-top: 15px;
+            background-color: #2ecc71;
+        }
+        .download-btn:hover {
+            background-color: #27ae60;
+        }
+        .example {
+            margin-top: 40px;
+            padding: 20px;
+            background-color: #f9f9f9;
+            border-radius: 8px;
+        }
+        .example-prompt {
+            font-style: italic;
+            color: #34495e;
+            cursor: pointer;
+            padding: 8px;
+            border: 1px dashed #bdc3c7;
+            display: inline-block;
+            border-radius: 4px;
+        }
+        .example-prompt:hover {
+            background-color: #eee;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>VideoGen Agent</h1>
+        <p class="tagline">Turn your text prompts into short films with AI</p>
+    </header>
+
+    <div class="container">
+        <form id="prompt-form">
+            <div class="form-group">
+                <label for="prompt">Enter your prompt:</label>
+                <textarea id="prompt" name="prompt" placeholder="e.g., A lonely robot on Mars finds a plant"></textarea>
+            </div>
+            <button type="submit" id="generate-btn">Generate Video</button>
+        </form>
+
+        <div id="status" class="status">
+            <h3 id="status-message">Generating your video...</h3>
+            <p id="status-details"></p>
+            <div class="progress-container">
+                <div id="progress-bar" class="progress-bar">0%</div>
+            </div>
+        </div>
+
+        <div id="video-container" class="video-container">
+            <h3>Your generated video</h3>
+            <video id="result-video" controls></video>
+            <div>
+                <a id="download-link" class="download-btn button">Download Video</a>
+            </div>
+        </div>
+
+        <div class="example">
+            <h3>Try these example prompts:</h3>
+            <p class="example-prompt" onclick="useExample(this)">A lonely robot on Mars finds a plant</p>
+            <p class="example-prompt" onclick="useExample(this)">An old lighthouse keeper discovers a message in a bottle</p>
+            <p class="example-prompt" onclick="useExample(this)">A child's toy comes to life at midnight</p>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const promptForm = document.getElementById('prompt-form');
+        const generateBtn = document.getElementById('generate-btn');
+        const promptInput = document.getElementById('prompt');
+        const statusContainer = document.getElementById('status');
+        const statusMessage = document.getElementById('status-message');
+        const statusDetails = document.getElementById('status-details');
+        const progressBar = document.getElementById('progress-bar');
+        const videoContainer = document.getElementById('video-container');
+        const resultVideo = document.getElementById('result-video');
+        const downloadLink = document.getElementById('download-link');
+
+        // Current job tracking
+        let currentJobId = null;
+        let statusCheckInterval = null;
+
+        // Form submission
+        promptForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const prompt = promptInput.value.trim();
+            
+            if (!prompt) {
+                alert('Please enter a prompt');
+                return;
+            }
+            
+            // Reset UI state
+            resetUI();
+            
+            // Show processing status
+            statusContainer.classList.add('processing');
+            statusMessage.textContent = 'Starting video generation...';
+            statusDetails.textContent = 'This may take several minutes';
+            generateBtn.disabled = true;
+            
+            try {
+                // Send generation request
+                const response = await fetch('/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: `prompt=${encodeURIComponent(prompt)}`
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    showError(data.error);
+                    return;
+                }
+                
+                currentJobId = data.job_id;
+                
+                // Start polling for status updates
+                statusCheckInterval = setInterval(checkStatus, 3000);
+                
+            } catch (error) {
+                showError('Failed to start video generation: ' + error.message);
+            }
+        });
+
+        // Check job status
+        async function checkStatus() {
+            if (!currentJobId) return;
+            
+            try {
+                const response = await fetch(`/status/${currentJobId}`);
+                const data = await response.json();
+                
+                if (data.error) {
+                    showError(data.error);
+                    return;
+                }
+                
+                updateProgress(data);
+                
+                // If completed or error, stop polling
+                if (data.status === 'completed' || data.status === 'error') {
+                    clearInterval(statusCheckInterval);
+                    
+                    if (data.status === 'completed') {
+                        showCompleted(data);
+                    } else {
+                        showError(data.message);
+                    }
+                }
+                
+            } catch (error) {
+                showError('Failed to check status: ' + error.message);
+                clearInterval(statusCheckInterval);
+            }
+        }
+
+        // Update progress UI
+        function updateProgress(data) {
+            const progress = data.progress;
+            progressBar.style.width = `${progress}%`;
+            progressBar.textContent = `${progress}%`;
+            statusDetails.textContent = data.message;
+        }
+
+        // Show completion UI
+        function showCompleted(data) {
+            generateBtn.disabled = false;
+            statusContainer.style.display = 'none';
+            videoContainer.style.display = 'block';
+            
+            // Set video source
+            resultVideo.src = `/download/${currentJobId}`;
+            
+            // Set download link
+            downloadLink.href = `/download/${currentJobId}`;
+            downloadLink.download = `videogen_${currentJobId}.mp4`;
+        }
+
+        // Show error UI
+        function showError(message) {
+            generateBtn.disabled = false;
+            statusContainer.classList.remove('processing');
+            statusContainer.classList.add('error');
+            statusMessage.textContent = 'Error';
+            statusDetails.textContent = message;
+            clearInterval(statusCheckInterval);
+        }
+
+        // Reset the UI state
+        function resetUI() {
+            statusContainer.className = 'status';
+            videoContainer.style.display = 'none';
+            progressBar.style.width = '0%';
+            progressBar.textContent = '0%';
+            clearInterval(statusCheckInterval);
+        }
+
+        // Use example prompt
+        function useExample(element) {
+            promptInput.value = element.textContent;
+            promptInput.focus();
+        }
+    </script>
+</body>
+</html> 
